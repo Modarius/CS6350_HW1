@@ -1,27 +1,35 @@
 # Written by Alan Felt for CS6350 Machine Learning
 from cProfile import label
 from fileinput import filename
+from telnetlib import DO
 import numpy as np
 import os
 import pandas as pd
 import anytree as at
+from anytree.exporter import UniqueDotExporter
+
 
 def validData(terms, attrib, data_labels):
     for A in attrib.keys():
         data_attrib_values = set(terms.get(A).unique())
         if (data_attrib_values != attrib[A]):
-            print("Attribute " + A + " cannot take value " + str(data_attrib_values.difference(attrib[A]))) # print the offending invalid attribute value
+            # print the offending invalid attribute value
+            print("Attribute " + A + " cannot take value " +
+                  str(data_attrib_values.difference(attrib[A])))
             return False
     if (data_labels != set(terms.index.unique().to_numpy())):
-        print("Data Label cannot take value " + str(set(terms.index.unique()).difference(data_labels)))
+        print("Data Label cannot take value " +
+              str(set(terms.index.unique()).difference(data_labels)))
         return False
     return True
+
 
 def importData(filename, attrib, attrib_labels, data_labels):
     terms = pd.read_csv(filename, sep=',', names=attrib_labels, index_col=6)
     if (not validData(terms, attrib, data_labels)):
         return
     return terms
+
 
 def entropy(S):
     labels = S.index.to_numpy()
@@ -31,9 +39,10 @@ def entropy(S):
     H_S = -np.sum(p * np.log(p))
     return H_S
 
+
 def infoGain(S):
     H_S = entropy(S)
-    num_S = np.size(S,0)
+    num_S = np.size(S, 0)
     ig = dict()
     best_ig = 0
     best_attribute = ""
@@ -42,7 +51,7 @@ def infoGain(S):
         values_A = S.get(A).unique()
         for v in values_A:
             Sv = S[S[A] == v]
-            num_Sv = np.size(Sv,0)
+            num_Sv = np.size(Sv, 0)
             H_Sv = entropy(Sv)
             total += num_Sv/num_S * H_Sv
         ig[A] = H_S - total
@@ -51,38 +60,56 @@ def infoGain(S):
             best_ig = ig[A]
     return best_attribute
 
-        
-
-def ID3(S, attribs, root=None):
-    if (S.index.unique().shape[0] == 1):
-        if (root == None):
-            return at.Node(S.index.unique())
-        else:
-            return at.Node(S.index.unique(), root)
-
-    best_attribute = infoGain(S)
+def leafNode(S, root):
+    l, c = np.unique(S.index.to_numpy(), return_counts=True)
+    best_label = l[c.argmax()]
     if (root == None):
-        new_node = at.Node(best_attribute)
+        return at.Node(best_label)
+    return at.Node(best_label, root)
+
+def ID3(S, attribs, root=None, max_depth=np.inf):
+    if (root != None):
+        if (root.depth == (max_depth - 1)):
+            return leafNode(S, root)
+    # check if all examples have one label and whether there are no more attributes to split on
+    if (S.index.unique().size == 1 or S.columns.size == 0):
+        return leafNode(S, root)
+
+    A = infoGain(S)
+    if (root == None):
+        new_root = at.Node(A)
     else:
-        new_node = at.Node(best_attribute,root)
-    for a in attribs[best_attribute]:
-        new_child = at.Node(name=a, parent=new_node)
-        ID3(S[S[best_attribute] == a].drop(best_attribute,axis=1), attribs, root=new_child)
+        new_root = at.Node(A, root)
+
+    for v in attribs[A]:
+        new_branch = at.Node(name=v, parent=new_root)
+        Sv = S[S[A] == v].drop(A, axis=1)
+        if (Sv.index.size == 0): # how does this account for when there is only one attribute and 
+            leafNode(S, root=new_branch)
+        else:
+            ID3(Sv, attribs, root=new_branch)
+    return new_root
+
 
 def DecisionTree():
-    attrib_labels = ['buying', 'maint', 'doors', 'persons', 'lug_boot', 'safety']
+    attrib_labels = ['buying', 'maint', 'doors',
+                     'persons', 'lug_boot', 'safety']
     attribs = {
-        'buying':{'vhigh', 'high', 'med', 'low'},
-        'maint':{'vhigh', 'high', 'med', 'low'},
-        'doors':{'2', '3', '4', '5more'},
-        'persons':{'2', '4', 'more'},
-        'lug_boot':{'small', 'med', 'big'},
-        'safety':{'low', 'med', 'high'}
+        'buying': {'vhigh', 'high', 'med', 'low'},
+        'maint': {'vhigh', 'high', 'med', 'low'},
+        'doors': {'2', '3', '4', '5more'},
+        'persons': {'2', '4', 'more'},
+        'lug_boot': {'small', 'med', 'big'},
+        'safety': {'low', 'med', 'high'}
     }
     data_labels = {'unacc', 'acc', 'good', 'vgood'}
 
-    terms = importData("car/train.csv", attribs, attrib_labels, data_labels)
-    ID3(terms, attribs)
+    S = importData("car/train.csv", attribs, attrib_labels, data_labels)
+    tree = ID3(S, attribs)
+    # print(at.RenderTree(tree, style=at.AsciiStyle()))
+    for pre, _, node in at.RenderTree(tree):
+        print("%s%s" % (pre, node.name))
+    UniqueDotExporter(tree).to_picture("tree.png")
 
 if __name__ == "__main__":
     DecisionTree()
