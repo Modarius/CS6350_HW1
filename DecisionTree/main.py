@@ -1,8 +1,6 @@
 # Written by Alan Felt for CS6350 Machine Learning
 
-from cProfile import label
 import numpy as np
-import os
 import pandas as pd
 from enum import Enum
 
@@ -42,6 +40,12 @@ class Node:
 
     def getChildren(self):
         return self.children
+
+    def getChild(self, child_name_in):
+        if child_name_in not in self.children:
+            return None # this should never be called
+        else:
+            return self.children[child_name_in] # return the child node with the attribute provided in child_name_in
 
 
 def validData(terms, attrib, data_labels):
@@ -165,14 +169,24 @@ def ID3(S, attribs, root, method, max_depth):
     # v is the branch, not a node, unless v splits the dataset into one with no subsets
     for v in attribs[A]:
         Sv = S[S[A] == v].drop(A, axis=1)
+        
         if (Sv.index.size == 0):  # if the subset is empty, make a child with the best label in S
-            v_child = Node(v, "leaf", None, None,
-                           bestLabel(S), root.getDepth() + 1)
+            v_child = Node(v, "leaf", None, None, bestLabel(S), root.getDepth() + 1)
+        elif (new_root.getDepth() == (max_depth - 1)): # if we are almost at depth, truncate and make a child with the best label in the subset
+            #print("At depth, truncating")
+            v_child = Node(v, "leaf", None, None, bestLabel(Sv), new_root.getDepth() + 1)
         else:  # if the subset is not empty make a child with the branch v but not the node name v, node name will be best attribute found for splitting Sv
             v_child = ID3(Sv, attribs, new_root, method, max_depth)
         new_root.setChild(v, v_child)
     return new_root
 
+
+def follower(data, tree):
+    if (tree.getType() != 'leaf'):
+        v = data.pop(tree.getName())
+        return follower(data, tree.getChild(v))
+    else:
+        return tree.getLabel()
 
 def printTree(tree):
     ttype = tree.getType()
@@ -191,6 +205,18 @@ def printTree(tree):
         printTree(tchildren[c])
     return
 
+def treeError(tree, S):
+    c_right = 0
+    c_wrong = 0
+    for data in S.itertuples(index=True):
+        if (data.Index != follower(data._asdict(), tree)):
+            c_wrong += 1
+            #print("not a match")
+        else:
+            c_right += 1
+            #print("matched!")
+    error = c_wrong / (c_right + c_wrong)
+    return error
 def DecisionTree():
     attrib_labels = ['buying', 'maint', 'doors',
                      'persons', 'lug_boot', 'safety']
@@ -204,9 +230,20 @@ def DecisionTree():
     }
     data_labels = {'unacc', 'acc', 'good', 'vgood'}
 
-    S = importData("car/train.csv", attribs, attrib_labels, data_labels)
-    tree = ID3(S, attribs, None, 'entropy', np.inf)
-    printTree(tree)
+    training_data = importData("car/train.csv", attribs, attrib_labels, data_labels)
+    test_data = importData("car/test.csv", attribs, attrib_labels, data_labels)
+    train_error = np.zeros([6,1])
+    test_error = np.zeros([6,1])
+    for max_depth in np.arange(start=1, stop=7):
+        tree = ID3(training_data, attribs, None, 'entropy', max_depth)
+        # printTree(tree)
+        train_error[max_depth - 1 ] = treeError(tree, training_data)
+        test_error[max_depth - 1] = treeError(tree, test_data)
+    print('Avg Error Training Dataset = ' + str(np.average(train_error)))
+    print('Avg Error Test Dataset = ' + str(np.average(test_error)))
+    print(train_error)
+    print(test_error)
+
     return
 
 if __name__ == "__main__":
