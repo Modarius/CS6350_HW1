@@ -11,21 +11,38 @@ from enum import Enum
 # for regular nodes, name is the name of the attribute it represents. Its children will be named the values of the attributes values
 class Node:
     def __init__(self, name_in, type_in, parent_node_in, children_node_in, label_in, depth_in):
-        self.name = name_in # name of the node
-        self.type = type_in # 'root', 'node', 'leaf', 'unknown'
-        self.parent = parent_node_in # will include a node (if not the root)
-        self.children = children_node_in # will include node(s) instance
+        self.name = name_in  # name of the node
+        self.type = type_in  # 'root', 'node', 'leaf', 'unknown'
+        self.parent = parent_node_in  # will include a node (if not the root)
+        self.children = children_node_in  # will include node(s) instance
         self.label = label_in
         self.depth = depth_in
+        return
 
     def setChild(self, child_name_in, child_node_in):
         if self.children is None:
+            self.children = {child_name_in: child_node_in}
+        elif child_name_in not in self.children:
             self.children[child_name_in] = child_node_in
-        if child_name_in not in self.children:
-            self.children[child_name_in] = child_node_in
+        else:
+            print("could not add" + child_name_in)
+        return
 
     def getDepth(self):
         return self.depth
+
+    def getName(self):
+        return self.name
+    
+    def getLabel(self):
+        return self.label
+
+    def getType(self):
+        return self.type
+
+    def getChildren(self):
+        return self.children
+
 
 def validData(terms, attrib, data_labels):
     for A in attrib.keys():
@@ -57,13 +74,14 @@ def entropy(S):
     H_S = -np.sum(p * np.log2(p))
     return H_S
 
-def majorityError(S): # this doesn't seem to be working
-    labels = S.index.to_numpy() # get all the labels in the current set S
-    num_S = len(labels) # count the labels
+
+def majorityError(S):  # this doesn't seem to be working
+    labels = S.index.to_numpy()  # get all the labels in the current set S
+    num_S = len(labels)  # count the labels
 
     # find all the unique labels and how many of each unique label there are
-    l, c = np.unique(labels, return_counts=True) 
-    best_choice = c.argmax() # choose the label with the greatest representation
+    l, c = np.unique(labels, return_counts=True)
+    best_choice = c.argmax()  # choose the label with the greatest representation
 
     # delete the count of the label with the greatest representation
     # sum up the number of remaining labels
@@ -75,6 +93,7 @@ def majorityError(S): # this doesn't seem to be working
     # return this number
     return m_error
 
+
 def giniIndex(S):
     labels = S.index.to_numpy()
     num_S = len(labels)
@@ -83,40 +102,49 @@ def giniIndex(S):
     gi = 1 - np.sum(np.square(p_l))
     return gi
 
+
 def infoGain(S, method='entropy'):
     if (method == 'majority_error'):
         Purity_S = majorityError(S)
     elif (method == 'gini'):
         Purity_S = giniIndex(S)
-    else: 
+    else:
         Purity_S = entropy(S)
     num_S = np.size(S, 0)
     ig = dict()
     best_ig = 0
     best_attribute = ""
-    for A in S.columns: # for each attribute in S
+    for A in S.columns:  # for each attribute in S
         total = 0
-        values_A = S.get(A).unique() # get the unique values that attribute A has in S
-        for v in values_A: # for each of those values
-            Sv = S[S[A] == v] # select a subset of S where S[A] equals that value of A
-            num_Sv = np.size(Sv, 0) # get the size of the subset (number of entries)
-            if (method == 'majority_error'): # choose the method for getting the purity value
-                Purity_Sv = majorityError(Sv) # this doesn't work
-            elif (method == 'gini'): # this seems to work fine
+        # get the unique values that attribute A has in S
+        values_A = S.get(A).unique()
+        for v in values_A:  # for each of those values
+            # select a subset of S where S[A] equals that value of A
+            Sv = S[S[A] == v]
+            # get the size of the subset (number of entries)
+            num_Sv = np.size(Sv, 0)
+            if (method == 'majority_error'):  # choose the method for getting the purity value
+                Purity_Sv = majorityError(Sv)  # this doesn't work
+            elif (method == 'gini'):  # this seems to work fine
                 Purity_Sv = giniIndex(Sv)
             else:
                 Purity_Sv = entropy(Sv)
-            total = total + num_Sv/num_S * Purity_Sv # sum the weighted values of each purity for v in A
-        ig[A] = Purity_S - total # subtract the sum from the purity of S to get the information gain
-        if (ig[A] >= best_ig): # if that information gain is better than the others, select that attribute as best
+            # sum the weighted values of each purity for v in A
+            total = total + num_Sv/num_S * Purity_Sv
+        # subtract the sum from the purity of S to get the information gain
+        ig[A] = Purity_S - total
+        if (ig[A] >= best_ig):  # if that information gain is better than the others, select that attribute as best
             best_attribute = A
             best_ig = ig[A]
-    return best_attribute # once we have checked all attributes A in S, return the best attribute to split on
+    # once we have checked all attributes A in S, return the best attribute to split on
+    return best_attribute
+
 
 def bestLabel(S):
     l, c = np.unique(S.index.to_numpy(), return_counts=True)
     best_label = l[c.argmax()]
     return best_label
+
 
 def ID3(S, attribs, root, method, max_depth):
     # Check if all examples have one label
@@ -131,47 +159,37 @@ def ID3(S, attribs, root, method, max_depth):
     if (root == None):
         new_root = Node(A, "root", None, None, None, 0)
     else:
-        new_root = Node(A, "node", None, None, None, root.getDepth() + 1) # need to change parent to root
+        # need to change parent to root
+        new_root = Node(A, "node", None, None, None, root.getDepth() + 1)
 
-    for v in attribs[A]: # v is the branch, not a node, unless v splits the dataset into one with no subsets
+    # v is the branch, not a node, unless v splits the dataset into one with no subsets
+    for v in attribs[A]:
         Sv = S[S[A] == v].drop(A, axis=1)
-        if (Sv.index.size == 0): # if the subset is empty, make a child with the best label in S
-            v_child = Node(v, "leaf", None, None, bestLabel(S), root.getDepth() + 1)
-        else: # if the subset is not empty make a child with the branch v but not the node name v, node name will be best attribute found for splitting Sv
+        if (Sv.index.size == 0):  # if the subset is empty, make a child with the best label in S
+            v_child = Node(v, "leaf", None, None,
+                           bestLabel(S), root.getDepth() + 1)
+        else:  # if the subset is not empty make a child with the branch v but not the node name v, node name will be best attribute found for splitting Sv
             v_child = ID3(Sv, attribs, new_root, method, max_depth)
         new_root.setChild(v, v_child)
     return new_root
 
-# def ID3(S, attribs, root=None, method='entropy', max_depth=np.inf):
-#     # if (root != None):
-#     #     if (root.depth == (max_depth - 2)):
-#     #         return leafNode(S, root)
-#     # check if all examples have one label and whether there are no more attributes to split on
-#     if (S.index.unique().size == 1 or S.columns.size == 0):
-#         return leafNode(S, root)
 
-#     A = infoGain(S, method)
+def printTree(tree):
+    ttype = tree.getType()
+    tname = tree.getName()
+    tlabel = tree.getLabel()
+    tchildren = tree.getChildren()
+    print('\t' * tree.getDepth(), end='')
 
-#     if (root == None):
-#         new_root = at.Node(A)
-#     else:
-#         new_root = at.Node(A, root)
-
-#     for v in attribs[A]:
-#         new_branch = at.Node(name=v, parent=new_root) # this is wrong, need to figure out how to label children
-#         Sv = S[S[A] == v].drop(A, axis=1)
-#         if (Sv.index.size == 0): # how does this account for when there is only one attribute and 
-#             leafNode(S, root=new_root)
-#         else:
-#             ID3(Sv, attribs, root=new_root, max_depth=max_depth)
-#     return new_root
-
-def findLabel(data, tree):
-    next_node = tree.children == data[tree.name] 
-
-# def labelData(S, tree):
-#     for i in S:
-#         findLabel(data, tree)
+    if(ttype == "leaf"):
+        print('|' + tlabel + '|')
+        return
+    elif(ttype == "root" or ttype == "node"):
+        print(tname)
+    for c in tchildren:
+        print('\t' * tree.getDepth() + '-> ' + c)
+        printTree(tchildren[c])
+    return
 
 def DecisionTree():
     attrib_labels = ['buying', 'maint', 'doors',
@@ -186,14 +204,10 @@ def DecisionTree():
     }
     data_labels = {'unacc', 'acc', 'good', 'vgood'}
 
-    S = importData("car/mini_train.csv", attribs, attrib_labels, data_labels)
+    S = importData("car/train.csv", attribs, attrib_labels, data_labels)
     tree = ID3(S, attribs, None, 'entropy', np.inf)
-    # print(at.RenderTree(tree, style=at.AsciiStyle()))
-    for pre, _, node in at.RenderTree(tree):
-        print("%s%s" % (pre, node.name))
-    UniqueDotExporter(tree).to_picture("tree.png")
-
-    # labelData(S, tree)
+    printTree(tree)
+    return
 
 if __name__ == "__main__":
     DecisionTree()
