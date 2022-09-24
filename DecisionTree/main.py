@@ -10,17 +10,19 @@ from enum import Enum
 # for leaf nodes, name is the same as the branch it is connected to
 # for regular nodes, name is the name of the attribute it represents. Its children will be named the values of the attributes values
 class Node:
-    def __init__(self, name_in, type_in, parent_in, children_in, label_in, depth_in):
+    def __init__(self, name_in, type_in, parent_node_in, children_node_in, label_in, depth_in):
         self.name = name_in # name of the node
         self.type = type_in # 'root', 'node', 'leaf', 'unknown'
-        self.parent = parent_in # will include a node (if not the root)
-        self.children = children_in # will include node(s) instance
+        self.parent = parent_node_in # will include a node (if not the root)
+        self.children = children_node_in # will include node(s) instance
         self.label = label_in
         self.depth = depth_in
 
-    def setChild(self, name_in, child_in):
-        if name_in not in self.children:
-            self.children[name_in] = child_in
+    def setChild(self, child_name_in, child_node_in):
+        if self.children is None:
+            self.children[child_name_in] = child_node_in
+        if child_name_in not in self.children:
+            self.children[child_name_in] = child_node_in
 
     def getDepth(self):
         return self.depth
@@ -116,28 +118,28 @@ def bestLabel(S):
     best_label = l[c.argmax()]
     return best_label
 
-def ID3(S, attribs, root_in=None, method='entropy', max_depth=np.inf):
+def ID3(S, attribs, root, method, max_depth):
     # Check if all examples have one label
     # Check whether there are no more attributes to split on
     # if so make a leaf node
     if (S.index.unique().size == 1 or S.columns.size == 0):
         label = bestLabel(S)
-        return Node(name_in=label, type_in="leaf", children_in=None, label_in=label, depth_in=root_in.getDepth() + 1)
+        return Node(label, "leaf", None, None, label, root.getDepth() + 1)
 
     A = infoGain(S, method)
 
-    if (root_in == None):
-        new_root = Node(name_in=A, type_in="root", depth_in = 0)
+    if (root == None):
+        new_root = Node(A, "root", None, None, None, 0)
     else:
-        new_root = Node(name_in=A, type_in="node", depth_in = root_in.getDepth() + 1)
+        new_root = Node(A, "node", None, None, None, root.getDepth() + 1) # need to change parent to root
 
     for v in attribs[A]: # v is the branch, not a node, unless v splits the dataset into one with no subsets
         Sv = S[S[A] == v].drop(A, axis=1)
         if (Sv.index.size == 0): # if the subset is empty, make a child with the best label in S
-            v_child = Node(name_in=v, type_in="leaf", children_in=None, label_in = bestLabel(S))
+            v_child = Node(v, "leaf", None, None, bestLabel(S), root.getDepth() + 1)
         else: # if the subset is not empty make a child with the branch v but not the node name v, node name will be best attribute found for splitting Sv
-            v_child = ID3(Sv, attribs, root_in=new_root, max_depth=max_depth)
-        new_root.setChild(name_in=v, child_in=v_child)
+            v_child = ID3(Sv, attribs, new_root, method, max_depth)
+        new_root.setChild(v, v_child)
     return new_root
 
 # def ID3(S, attribs, root=None, method='entropy', max_depth=np.inf):
@@ -185,7 +187,7 @@ def DecisionTree():
     data_labels = {'unacc', 'acc', 'good', 'vgood'}
 
     S = importData("car/mini_train.csv", attribs, attrib_labels, data_labels)
-    tree = ID3(S, attribs, method='entropy')
+    tree = ID3(S, attribs, None, 'entropy', np.inf)
     # print(at.RenderTree(tree, style=at.AsciiStyle()))
     for pre, _, node in at.RenderTree(tree):
         print("%s%s" % (pre, node.name))
