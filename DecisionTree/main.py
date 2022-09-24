@@ -1,12 +1,29 @@
 # Written by Alan Felt for CS6350 Machine Learning
 
-
+from cProfile import label
 import numpy as np
 import os
 import pandas as pd
-import anytree as at
-from anytree.exporter import UniqueDotExporter
+from enum import Enum
 
+
+# for leaf nodes, name is the same as the branch it is connected to
+# for regular nodes, name is the name of the attribute it represents. Its children will be named the values of the attributes values
+class Node:
+    def __init__(self, name_in, type_in, parent_in, children_in, label_in, depth_in):
+        self.name = name_in # name of the node
+        self.type = type_in # 'root', 'node', 'leaf', 'unknown'
+        self.parent = parent_in # will include a node (if not the root)
+        self.children = children_in # will include node(s) instance
+        self.label = label_in
+        self.depth = depth_in
+
+    def setChild(self, name_in, child_in):
+        if name_in not in self.children:
+            self.children[name_in] = child_in
+
+    def getDepth(self):
+        return self.depth
 
 def validData(terms, attrib, data_labels):
     for A in attrib.keys():
@@ -35,13 +52,8 @@ def entropy(S):
     num_S = len(labels)
     l, c = np.unique(labels, return_counts=True)
     p = c / num_S
-    H_S = -np.sum(p * np.log10(p))
+    H_S = -np.sum(p * np.log2(p))
     return H_S
-
-    # if (len(l) != 1):
-    #     H_S = -np.sum(p * (np.log(p)/np.log(len(l)))) # take the log_base where base = # of labels, uses change of base formula
-    # else:
-    #     H_S = 0
 
 def majorityError(S): # this doesn't seem to be working
     labels = S.index.to_numpy() # get all the labels in the current set S
@@ -99,36 +111,58 @@ def infoGain(S, method='entropy'):
             best_ig = ig[A]
     return best_attribute # once we have checked all attributes A in S, return the best attribute to split on
 
-def leafNode(S, root):
+def bestLabel(S):
     l, c = np.unique(S.index.to_numpy(), return_counts=True)
     best_label = l[c.argmax()]
-    if (root == None):
-        return at.Node(best_label)
-    return at.Node(best_label, root)
+    return best_label
 
-def ID3(S, attribs, root=None, method='entropy', max_depth=np.inf):
-    # if (root != None):
-    #     if (root.depth == (max_depth - 2)):
-    #         return leafNode(S, root)
-    # check if all examples have one label and whether there are no more attributes to split on
+def ID3(S, attribs, root_in=None, method='entropy', max_depth=np.inf):
+    # Check if all examples have one label
+    # Check whether there are no more attributes to split on
+    # if so make a leaf node
     if (S.index.unique().size == 1 or S.columns.size == 0):
-        return leafNode(S, root)
+        label = bestLabel(S)
+        return Node(name_in=label, type_in="leaf", children_in=None, label_in=label, depth_in=root_in.getDepth() + 1)
 
     A = infoGain(S, method)
 
-    if (root == None):
-        new_root = at.Node(A)
+    if (root_in == None):
+        new_root = Node(name_in=A, type_in="root", depth_in = 0)
     else:
-        new_root = at.Node(A, root)
+        new_root = Node(name_in=A, type_in="node", depth_in = root_in.getDepth() + 1)
 
-    for v in attribs[A]:
-        new_branch = at.Node(name=v, parent=new_root) # this is wrong, need to figure out how to label children
+    for v in attribs[A]: # v is the branch, not a node, unless v splits the dataset into one with no subsets
         Sv = S[S[A] == v].drop(A, axis=1)
-        if (Sv.index.size == 0): # how does this account for when there is only one attribute and 
-            leafNode(S, root=new_root)
-        else:
-            ID3(Sv, attribs, root=new_root, max_depth=max_depth)
+        if (Sv.index.size == 0): # if the subset is empty, make a child with the best label in S
+            v_child = Node(name_in=v, type_in="leaf", children_in=None, label_in = bestLabel(S))
+        else: # if the subset is not empty make a child with the branch v but not the node name v, node name will be best attribute found for splitting Sv
+            v_child = ID3(Sv, attribs, root_in=new_root, max_depth=max_depth)
+        new_root.setChild(name_in=v, child_in=v_child)
     return new_root
+
+# def ID3(S, attribs, root=None, method='entropy', max_depth=np.inf):
+#     # if (root != None):
+#     #     if (root.depth == (max_depth - 2)):
+#     #         return leafNode(S, root)
+#     # check if all examples have one label and whether there are no more attributes to split on
+#     if (S.index.unique().size == 1 or S.columns.size == 0):
+#         return leafNode(S, root)
+
+#     A = infoGain(S, method)
+
+#     if (root == None):
+#         new_root = at.Node(A)
+#     else:
+#         new_root = at.Node(A, root)
+
+#     for v in attribs[A]:
+#         new_branch = at.Node(name=v, parent=new_root) # this is wrong, need to figure out how to label children
+#         Sv = S[S[A] == v].drop(A, axis=1)
+#         if (Sv.index.size == 0): # how does this account for when there is only one attribute and 
+#             leafNode(S, root=new_root)
+#         else:
+#             ID3(Sv, attribs, root=new_root, max_depth=max_depth)
+#     return new_root
 
 def findLabel(data, tree):
     next_node = tree.children == data[tree.name] 
