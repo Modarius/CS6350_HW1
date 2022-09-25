@@ -2,7 +2,6 @@
 
 import numpy as np
 import pandas as pd
-from enum import Enum
 
 
 # for leaf nodes, name is the same as the branch it is connected to
