@@ -63,8 +63,29 @@ def validData(terms, attrib, data_labels):
     return True
 
 
-def importData(filename, attrib, attrib_labels, data_labels):
-    terms = pd.read_csv(filename, sep=',', names=attrib_labels, index_col=6)
+def importData(filename, attrib, attrib_labels, data_labels, index_col=0, numeric_data=None):
+    terms = pd.read_csv(filename, sep=',', names=attrib_labels, index_col=index_col)
+    if (numeric_data != None):
+        for label in numeric_data.keys():
+            column = terms.get(label)
+            new_column = column.copy(deep=True)
+            split_value = np.median(column.to_numpy())
+            new_column.where(column <= split_value, numeric_data[label][0], inplace=True)
+            new_column.where(column > split_value, numeric_data[label][1], inplace=True)
+            terms[label] = new_column
+
+    for A in terms.columns.to_numpy():
+        if(terms[A].unique().__contains__('unknown')):
+            column2 = terms.get(A)
+            new_column2 = column2.copy(deep=True)
+            l, c = np.unique(column2.to_numpy(), return_counts=True)
+            idx = np.squeeze(np.where(l == 'unknown'))[()] # https://thispointer.com/find-the-index-of-a-value-in-numpy-array/, https://stackoverflow.com/questions/773030/why-are-0d-arrays-in-numpy-not-considered-scalar
+            l = np.delete(l, idx)
+            c = np.delete(c, idx)
+            best_value = l[c.argmax()]
+            new_column2.where(column2 != 'unknown', best_value, inplace=True)
+            terms[A] = new_column2
+
     if (not validData(terms, attrib, data_labels)):
         return
     return terms
@@ -140,6 +161,8 @@ def infoGain(S, method='entropy'):
         if (ig[A] >= best_ig):  # if that information gain is better than the others, select that attribute as best
             best_attribute = A
             best_ig = ig[A]
+    if (best_attribute == ""): # handle edge case where no value is best, in that case just return what is in A (should be one value)
+        best_attribute = A
     # once we have checked all attributes A in S, return the best attribute to split on
     return best_attribute
 
@@ -188,6 +211,7 @@ def follower(data, tree):
     else:
         return tree.getLabel()
 
+
 def printTree(tree):
     ttype = tree.getType()
     tname = tree.getName()
@@ -205,6 +229,7 @@ def printTree(tree):
         printTree(tchildren[c])
     return
 
+
 def treeError(tree, S):
     c_right = 0
     c_wrong = 0
@@ -217,32 +242,73 @@ def treeError(tree, S):
             #print("matched!")
     error = c_wrong / (c_right + c_wrong)
     return error
-def DecisionTree():
-    attrib_labels = ['buying', 'maint', 'doors',
-                     'persons', 'lug_boot', 'safety']
-    attribs = {
-        'buying': {'vhigh', 'high', 'med', 'low'},
-        'maint': {'vhigh', 'high', 'med', 'low'},
-        'doors': {'2', '3', '4', '5more'},
-        'persons': {'2', '4', 'more'},
-        'lug_boot': {'small', 'med', 'big'},
-        'safety': {'low', 'med', 'high'}
-    }
-    data_labels = {'unacc', 'acc', 'good', 'vgood'}
 
-    training_data = importData("car/train.csv", attribs, attrib_labels, data_labels)
-    test_data = importData("car/test.csv", attribs, attrib_labels, data_labels)
-    train_error = np.zeros([6,1])
-    test_error = np.zeros([6,1])
-    for max_depth in np.arange(start=1, stop=7):
-        tree = ID3(training_data, attribs, None, 'entropy', max_depth)
-        # printTree(tree)
-        train_error[max_depth - 1 ] = treeError(tree, training_data)
-        test_error[max_depth - 1] = treeError(tree, test_data)
+
+def DecisionTree():
+    # initialization data for car dataset
+    # attrib_labels = ['buying', 'maint', 'doors',
+    #                  'persons', 'lug_boot', 'safety']
+    # attribs = {
+    #     'buying': {'vhigh', 'high', 'med', 'low'},
+    #     'maint': {'vhigh', 'high', 'med', 'low'},
+    #     'doors': {'2', '3', '4', '5more'},
+    #     'persons': {'2', '4', 'more'},
+    #     'lug_boot': {'small', 'med', 'big'},
+    #     'safety': {'low', 'med', 'high'}
+    # }
+    # data_labels = {'unacc', 'acc', 'good', 'vgood'}
+    # train_filepath = "car/train.csv"
+    # test_filepath = "car/test.csv"
+    # numeric_data = None
+    # index_col = 6
+
+    # initilalization data for bank dataset
+    attrib_labels = ['age', 'job', 'marital', 'education', 'default', 'balance', 'housing', 'loan', 'contact', 'day', 'month', 'duration', 'campaign', 'pdays', 'previous', 'poutcome']
+    attribs = {
+        'age':{'young', 'old'}, # this is a numeric value which will be converted to categorical
+        'job':{'admin.','unemployed','management','housemaid','entrepreneur','student',
+            'blue-collar','self-employed','retired','technician','services'}, # 'unknown'
+        'marital':{"married","divorced","single"}, 
+        'education':{"secondary","primary","tertiary"},  # "unknown"
+        'default':{'yes', 'no'}, 
+        'balance':{'low', 'high'}, # this is a numeric value which will be converted to categorical
+        'housing':{'yes', 'no'}, 
+        'loan':{'yes', 'no'}, 
+        'contact':{'telephone', 'cellular'}, #'unknown'
+        'day':{'early', 'late'}, # this is a numeric value which will be converted to categorical
+        'month':{"jan", "feb", "mar", 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', "nov", "dec"}, 
+        'duration':{'short', 'long'}, # this is a numeric value which will be converted to categorical
+        'campaign':{'few', 'many'}, # this is a numeric value which will be converted to categorical
+        'pdays':{'few', 'many'}, # this is a numeric value which will be converted to categorical
+        'previous':{'few', 'many'}, # this is a numeric value which will be converted to categorical
+        'poutcome':{'other', 'failure', 'success'} # 'unknown'
+        }
+    data_labels = {'yes', 'no'}
+    train_filepath = 'bank/train.csv'
+    test_filepath = 'bank/test.csv'
+    numeric_data = {
+        'age':['young', 'old'], # this is a numeric value which will be converted to categorical
+        'balance':['low', 'high'], # this is a numeric value which will be converted to categorical
+        'day':['early', 'late'], # this is a numeric value which will be converted to categorical
+        'duration':['short', 'long'], # this is a numeric value which will be converted to categorical
+        'campaign':['few', 'many'], # this is a numeric value which will be converted to categorical
+        'pdays':['few', 'many'], # this is a numeric value which will be converted to categorical
+        'previous':['few', 'many'], # this is a numeric value which will be converted to categorical
+        }
+    index_col = 16 
+    
+    training_data = importData(train_filepath, attribs, attrib_labels, data_labels, numeric_data=numeric_data, index_col=index_col)
+    test_data = importData(test_filepath, attribs, attrib_labels, data_labels, numeric_data=numeric_data, index_col=index_col)
+    train_error = np.zeros([16,1])
+    test_error = np.zeros([16,1])
+    for max_depth in np.arange(start=1, stop=17):
+        tree = ID3(training_data, attribs, None, 'entropy', max_depth) # build the tree
+        print("Depth: " + str(max_depth)) # print out current max_depth value
+        # printTree(tree) # crude print of tree
+        train_error[max_depth - 1 ] = treeError(tree, training_data) # test the error for the given dataset
+        test_error[max_depth - 1] = treeError(tree, test_data) # test the error for the given dataset
     print('Avg Error Training Dataset = ' + str(np.average(train_error)))
     print('Avg Error Test Dataset = ' + str(np.average(test_error)))
-    print(train_error)
-    print(test_error)
 
     return
 
